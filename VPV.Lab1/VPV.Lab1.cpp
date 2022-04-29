@@ -8,6 +8,7 @@
 #include <Windows.h>
 #include <time.h>
 #include "log.h"
+#include <math.h>
 
 using namespace std;
 
@@ -54,6 +55,76 @@ double delayesADD() {
 	return double(__rdtsc() - t_start);
 };
 
+double Integral1000() {
+	__int64 t_start;
+	t_start = __rdtsc();
+	double start = 0;
+	double end = 1;
+	double counter = start;
+	double value = 0;
+	Repeat1000({
+		value += sin(counter);
+		counter += 0.001;
+	});
+	return double(__rdtsc() - t_start);
+}
+
+double Integral10000() {
+	__int64 t_start;
+	t_start = __rdtsc();
+	double counter = 0;
+	double value = 0;
+	Repeat10000({
+		value += sin(counter) * 0.0001;
+		counter += 0.0001;
+		});
+	return double(__rdtsc() - t_start);
+}
+
+unsigned __int64 fibRecursive(unsigned __int64 n) {
+	if (n < 2) return n;
+	return fibRecursive(n - 1) + fibRecursive(n - 2);
+}
+//y = cos(x) - sin(x) 
+double Integral(int n) {
+	double value = 0;
+
+	for (int i = 0; i <= n; i++) {
+		value += (cos(1 / n * i) - sin(1 / n * i)) * 1 / n;
+	}
+
+	return value;
+}
+
+double integralQPC() {
+	LARGE_INTEGER t_start, t_finish, freq;
+	__int64 t_code;
+	QueryPerformanceFrequency(&freq);
+	QueryPerformanceCounter(&t_start);
+
+	Integral(1000000);
+
+	QueryPerformanceCounter(&t_finish);
+	t_code = t_finish.QuadPart - t_start.QuadPart;
+	return double(t_code) / freq.QuadPart;
+}
+
+double fibRecursive10QPC() {
+	LARGE_INTEGER t_start, t_finish, freq;
+	__int64 t_code;
+	QueryPerformanceFrequency(&freq);
+	QueryPerformanceCounter(&t_start);
+	int* results = new int[100];
+	for (int i = 0; i < 100; i++) {
+		results[i] = fibRecursive(10);
+	}
+	
+
+	QueryPerformanceCounter(&t_finish);
+	t_code = t_finish.QuadPart - t_start.QuadPart;
+	return double(t_code) / freq.QuadPart;
+}
+
 int main() {
 	Log log;
 	Log suplog;
@@ -70,6 +141,17 @@ int main() {
 		cout << "\nСерия " << n << endl << endl;
 		log.series(true, 1000, сlockIntervalUsingQPC)
 			.calc().stat(scale, "Число микросекунд в одном clock-интервале через QPC (без фильтрации)")
+			.print(O_NATURAL, scale, 10).print(O_MIN, scale, 10).print(O_MAX, scale, 10);;
+	}
+
+	cout << "\n\nОценка повторяемости вычисления 10-го числа Фибоначчи через QPC без фильтрации\n";
+	scale = NS_IN_SEC; // Значения будем выводить в микросекундах
+	log.config({ {PREC_AVG, 2},  // Для среднего и СКО задаем более высокую точность
+		{FILTR_MIN,0},{FILTR_MAX, 0} }); // нет фильтрации
+	for (int n = 1; n <= nPasses; n++) {
+		cout << "\nСерия " << n << endl << endl;
+		log.series(true, 10, fibRecursive10QPC)
+			.calc().stat(scale, "Число наносекунд затраченных на вычисление 10-го числа Фибоначчи через QPC (без фильтрации)")
 			.print(O_NATURAL, scale, 10).print(O_MIN, scale, 10).print(O_MAX, scale, 10);;
 	}
 
@@ -103,6 +185,15 @@ int main() {
 		cout << "\nСерия " << n << endl << endl;
 		log.series(true, 100, delayesADD).config({ {FILTR_MIN, 2 * n},{FILTR_MAX, 2 * n} })
 			.calc().stat(scale, "Задержки 1000-кратного исполнения sum += 1. в наносекундах")
+			.print(O_NATURAL, scale, 10).print(O_MIN, scale, 10).print(O_MAX, scale, 10);
+	}
+
+	cout << "\n\nОценка повторяемости 100 измерений определенного интеграла синуса на отрезке от 0 до 1\n";
+	scale = NS_IN_SEC / freqTSC;
+	for (int n = 1; n <= 5; n++) {
+		cout << "\nСерия " << n << endl << endl;
+		log.series(true, 100, Integral1000).config({ {FILTR_MIN, 2 * n},{FILTR_MAX, 2 * n} })
+			.calc().stat(scale, "Задержки 1000-кратного исполнения вычисления определенного интеграла функции sin(x) от 0 до 1 в наносекундах")
 			.print(O_NATURAL, scale, 10).print(O_MIN, scale, 10).print(O_MAX, scale, 10);
 	}
 
